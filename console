@@ -1,0 +1,183 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/vendor/autoload.php';
+
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->safeLoad();
+}
+
+$command = $argv[1] ?? 'list';
+$argument = $argv[2] ?? null;
+$options = array_slice($argv, 3);
+
+function color(string $text, string $color = 'green'): string {
+    $colors = [
+        'green' => "\033[32m",
+        'yellow' => "\033[33m",
+        'blue' => "\033[34m",
+        'red' => "\033[31m",
+        'cyan' => "\033[36m",
+        'bold' => "\033[1m",
+        'reset' => "\033[0m"
+    ];
+    return ($colors[$color] ?? '') . $text . $colors['reset'];
+}
+
+switch ($command) {
+    case 'make:controller':
+        if (!$argument) {
+            echo color("Erro: Informe o nome do controller. Ex: php console make:controller ProdutoController\n", "red");
+            exit(1);
+        }
+
+        $isApi = in_array('--api', $argv, true);
+        $name = str_ends_with($argument, 'Controller') ? $argument : $argument . 'Controller';
+        $path = __DIR__ . '/src/controllers/' . $name . '.php';
+
+        if (file_exists($path)) {
+            echo color("Erro: Controller {$name} já existe!\n", "red");
+            exit(1);
+        }
+
+        if ($isApi) {
+            $template = "<?php\nnamespace src\\controllers;\n\nuse core\\Controller;\n\nclass {$name} extends Controller {\n\n    public function index() {\n        \$this->json([\n            'status' => 'success',\n            'data' => []\n        ]);\n    }\n\n    public function show(\$args) {\n        \$this->json([\n            'status' => 'success',\n            'id' => \$args['id'] ?? null\n        ]);\n    }\n}\n";
+        } else {
+            $template = "<?php\nnamespace src\\controllers;\n\nuse core\\Controller;\n\nclass {$name} extends Controller {\n\n    public function index() {\n        \$this->view('pages/home', [\n            'title' => '{$name}'\n        ]);\n    }\n}\n";
+        }
+
+        file_put_contents($path, $template);
+        echo color("✔ Controller criado com sucesso em: ", "green") . "src/controllers/{$name}.php\n";
+        break;
+
+    case 'make:model':
+        if (!$argument) {
+            echo color("Erro: Informe o nome do model. Ex: php console make:model Produto\n", "red");
+            exit(1);
+        }
+
+        $name = ucfirst($argument);
+        $path = __DIR__ . '/src/models/' . $name . '.php';
+
+        if (file_exists($path)) {
+            echo color("Erro: Model {$name} já existe!\n", "red");
+            exit(1);
+        }
+
+        $tableName = strtolower($name) . 's';
+        $template = "<?php\nnamespace src\\models;\n\nuse core\\Model;\n\nclass {$name} extends Model {\n    protected static ?string \$table = '{$tableName}';\n    protected static string \$primaryKey = 'id';\n}\n";
+
+        file_put_contents($path, $template);
+        echo color("✔ Model criado com sucesso em: ", "green") . "src/models/{$name}.php\n";
+
+        if (in_array('-m', $argv, true) || in_array('--migration', $argv, true)) {
+            $migrationName = "create_{$tableName}_table";
+            $timestamp = date('Y_m_d_His');
+            $migFile = __DIR__ . "/database/migrations/{$timestamp}_{$migrationName}.php";
+            $migTemplate = "<?php\nuse core\\Migration;\n\nreturn new class extends Migration {\n    public function up(\\PDO \$pdo): void {\n        \$sql = \"CREATE TABLE IF NOT EXISTS {$tableName} (\n            id INT AUTO_INCREMENT PRIMARY KEY,\n            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP\n        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\";\n        \$pdo->exec(\$sql);\n    }\n\n    public function down(\\PDO \$pdo): void {\n        \$pdo->exec(\"DROP TABLE IF EXISTS {$tableName};\");\n    }\n};\n";
+            file_put_contents($migFile, $migTemplate);
+            echo color("✔ Migration criada em: ", "green") . "database/migrations/{$timestamp}_{$migrationName}.php\n";
+        }
+        break;
+
+    case 'make:middleware':
+        if (!$argument) {
+            echo color("Erro: Informe o nome do middleware. Ex: php console make:middleware AuthMiddleware\n", "red");
+            exit(1);
+        }
+
+        $name = str_ends_with($argument, 'Middleware') ? $argument : $argument . 'Middleware';
+        $path = __DIR__ . '/src/middlewares/' . $name . '.php';
+
+        if (file_exists($path)) {
+            echo color("Erro: Middleware {$name} já existe!\n", "red");
+            exit(1);
+        }
+
+        $template = "<?php\nnamespace src\\middlewares;\n\nuse core\\Middleware;\nuse core\\Request;\nuse core\\Response;\n\nclass {$name} implements Middleware {\n    public function handle(Request \$request, Response \$response): bool {\n        // Adicione aqui a lógica de verificação ou manipulação\n        return true;\n    }\n}\n";
+
+        file_put_contents($path, $template);
+        echo color("✔ Middleware criado com sucesso em: ", "green") . "src/middlewares/{$name}.php\n";
+        break;
+
+    case 'make:migration':
+        if (!$argument) {
+            echo color("Erro: Informe o nome da migração. Ex: php console make:migration create_pedidos_table\n", "red");
+            exit(1);
+        }
+
+        $cleanName = preg_replace('/[^a-zA-Z0-9_]/', '', strtolower($argument));
+        $timestamp = date('Y_m_d_His');
+        $migFile = __DIR__ . "/database/migrations/{$timestamp}_{$cleanName}.php";
+
+        $template = "<?php\nuse core\\Migration;\n\nreturn new class extends Migration {\n    public function up(\\PDO \$pdo): void {\n        // \$pdo->exec(\"CREATE TABLE ...\");\n    }\n\n    public function down(\\PDO \$pdo): void {\n        // \$pdo->exec(\"DROP TABLE ...\");\n    }\n};\n";
+
+        file_put_contents($migFile, $template);
+        echo color("✔ Migration criada em: ", "green") . "database/migrations/{$timestamp}_{$cleanName}.php\n";
+        break;
+
+    case 'migrate':
+        try {
+            $runner = new \core\MigrationRunner();
+            $count = $runner->migrate(function($msg) {
+                echo color("  " . $msg . "\n", "cyan");
+            });
+
+            if ($count === 0) {
+                echo color("Nenhuma migração pendente para executar.\n", "yellow");
+            } else {
+                echo color("✔ {$count} migração(ões) executada(s) com sucesso!\n", "green");
+            }
+        } catch (\Throwable $e) {
+            echo color("Erro na migração: " . $e->getMessage() . "\n", "red");
+            exit(1);
+        }
+        break;
+
+    case 'migrate:rollback':
+        try {
+            $runner = new \core\MigrationRunner();
+            $count = $runner->rollback(function($msg) {
+                echo color("  " . $msg . "\n", "yellow");
+            });
+
+            if ($count === 0) {
+                echo color("Nenhuma migração para reverter.\n", "yellow");
+            } else {
+                echo color("✔ {$count} migração(ões) revertida(s) com sucesso!\n", "green");
+            }
+        } catch (\Throwable $e) {
+            echo color("Erro no rollback: " . $e->getMessage() . "\n", "red");
+            exit(1);
+        }
+        break;
+
+    case 'serve':
+        $port = 8000;
+        foreach ($argv as $arg) {
+            if (str_starts_with($arg, '--port=')) {
+                $port = (int)substr($arg, 7);
+            }
+        }
+        echo color("Iniciando servidor de desenvolvimento em http://localhost:{$port}\n", "green");
+        echo color("Pressione Ctrl+C para encerrar.\n", "yellow");
+        passthru("php -S localhost:{$port} -t public");
+        break;
+
+    case 'list':
+    default:
+        echo color("============================================\n", "bold");
+        echo color("   🚀 MVC Console Boilerplate CLI   \n", "cyan");
+        echo color("============================================\n", "bold");
+        echo color("Comandos disponíveis:\n\n", "yellow");
+        echo "  " . color("make:controller <Nome> [--api]", "green") . "   Cria um novo Controller (Web ou API)\n";
+        echo "  " . color("make:model <Nome> [-m]", "green") . "           Cria um novo Model (com opção de migration)\n";
+        echo "  " . color("make:middleware <Nome>", "green") . "          Cria um novo Middleware\n";
+        echo "  " . color("make:migration <Nome>", "green") . "           Cria uma nova migração de banco\n";
+        echo "  " . color("migrate", "green") . "                         Executa todas as migrações pendentes\n";
+        echo "  " . color("migrate:rollback", "green") . "                Reverte o último lote de migrações\n";
+        echo "  " . color("serve [--port=8000]", "green") . "             Inicia o servidor PHP embutido\n";
+        echo "\n";
+        break;
+}

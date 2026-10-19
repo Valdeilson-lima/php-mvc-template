@@ -1,0 +1,15 @@
+{
+    "require": {
+        "clancats/hydrahon": "^1.1",
+        "vlucas/phpdotenv": "^5.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "core\\": "core/",
+            "src\\": "src/"
+        },
+        "files": [
+            "core/helpers.php"
+        ]
+    }
+}
